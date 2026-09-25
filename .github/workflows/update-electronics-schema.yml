@@ -1,0 +1,54 @@
+name: Electronics-JSON aktualisieren
+
+on:
+  schedule:
+    - cron: "15 6 * * *" # täglich um 06:15 UTC
+  workflow_dispatch:     # manueller Start möglich
+
+permissions:
+  contents: write
+
+jobs:
+  update-json:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Eigenes Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Aktuelle electronics.json herunterladen und prüfen
+        run: |
+          curl --fail --location --silent --show-error --retry 3 \
+            --output /tmp/electronics.json \
+            "https://raw.githubusercontent.com/malinoto/tracepass-dpp-schemas/main/templates/electronics.json"
+
+          test -s /tmp/electronics.json
+          jq empty /tmp/electronics.json
+
+      - name: Mit der zuletzt gespeicherten Datei vergleichen
+        id: compare
+        run: |
+          if [ ! -f source/electronics.json ] || \
+             ! cmp -s /tmp/electronics.json source/electronics.json; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Neue oder geänderte electronics.json gefunden."
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Keine Änderung gefunden."
+          fi
+
+      - name: Gespeicherte electronics.json aktualisieren
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          mkdir -p source
+          cp /tmp/electronics.json source/electronics.json
+
+      - name: JSON-Änderung committen und pushen
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add source/electronics.json
+          git commit -m "chore: electronics.json aktualisieren"
+          git push
